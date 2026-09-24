@@ -61,7 +61,7 @@ jobs:
         run: |
           built="$(nix eval --raw .#lib.versionInfo.version)"
           [ "v$built" = "$TAG" ] || { echo "::error::built version $built != tag $TAG"; exit 1; }
-          [ "$(nix eval --raw .#lib.versionInfo.isRelease)" = "true" ] || { echo "::error::checkout is not a release state"; exit 1; }
+          [ "$(nix eval --json .#lib.versionInfo.isRelease)" = "true" ] || { echo "::error::checkout is not a release state"; exit 1; }
           ls -l assets/
       - name: Upload assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

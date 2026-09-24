@@ -68,8 +68,8 @@ if [ "$prerelease" = false ]; then
 fi
 
 # 1. draft
-payload="$(jq -n --arg tag "$tag" --arg name "$tag" --arg body "$notes" --argjson pre "$prerelease" --arg latest "$make_latest" \
-  '{tag_name:$tag, name:$name, body:$body, draft:true, prerelease:$pre, make_latest:$latest}')"
+payload="$(jq -n --arg tag "$tag" --arg name "$tag" --arg body "$notes" --argjson pre "$prerelease" \
+  '{tag_name:$tag, name:$name, body:$body, draft:true, prerelease:$pre}')"
 release="$(gh_api POST "/repos/$GITHUB_REPOSITORY/releases" -d "$payload")"
 id="$(jq -r .id <<<"$release")"
 upload_url="$(jq -r '.upload_url | sub("\\{\\?name,label\\}$"; "")' <<<"$release")"
@@ -98,8 +98,10 @@ for file in "$dir"/*; do
   echo "github-release: uploaded $name (${size} bytes, sha256:$local_sha)"
 done
 
-# 3. publish (this is the point of no return with immutable releases)
-published="$(gh_api PATCH "/repos/$GITHUB_REPOSITORY/releases/$id" -d '{"draft": false}')"
+# 3. publish (the point of no return with immutable releases). make_latest
+# goes here, not on the draft: "Drafts and prereleases cannot be set as latest."
+published="$(gh_api PATCH "/repos/$GITHUB_REPOSITORY/releases/$id" \
+  -d "$(jq -n --arg latest "$make_latest" '{draft:false, make_latest:$latest}')")"
 echo "github-release: published $(jq -r .html_url <<<"$published")"
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {

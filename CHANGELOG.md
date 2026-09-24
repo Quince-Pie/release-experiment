@@ -9,6 +9,14 @@ the flake, the binary and the release tag are all derived from it.
 
 ## [Unreleased]
 
+### Fixed
+
+- The release workflow's release-state guard used `nix eval --raw` on a
+  boolean and always failed; v0.1.0 was tagged but never published because
+  of it, and the tag stays as the rules require.
+- `make_latest` is sent when a draft release is published, not when it is
+  created, because "Drafts and prereleases cannot be set as latest".
+
 ## [0.1.0] - 2026-09-24
 
 ### Added

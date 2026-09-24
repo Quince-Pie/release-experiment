@@ -139,3 +139,37 @@ Confirmed by making the calls (all returned 2xx and read back):
   multi-user install and adds the profile to `GITHUB_PATH`.
 - Result: succeeded on `ubuntu-24.04` and `ubuntu-24.04-arm` in every run;
   `nix flake check` with sandboxing enabled passed on both.
+
+## E7. The first real `prepare` exposed a defect the simulation had masked
+
+- Running `nix run .#release -- prepare 0.1.0` against the real remote
+  produced changelog reference links of the form
+  `https///github.com:Quince-Pie/...`: the SSH-remote conversion in
+  `scripts/changelog.sh` prefixed `https://` before replacing the first
+  colon. The earlier end-to-end simulation (E-series above) had set
+  `CHANGELOG_REPO_URL` and never exercised that branch of the code.
+- Fix: replace the colon first; and the changelog lint now rejects any
+  reference whose URL is not `scheme://host/...`, so a malformed link
+  fails `nix flake check` and the pull request's CI rather than reaching
+  a tag. The release branch was rebuilt from the fixed main and the
+  pull request re-checked before merging.
+
+## E8. v0.1.0: a tag without a release, by design
+
+- The tag was created and pushed by `nix run .#release -- tag 0.1.0`;
+  GitHub reports its signature as `unknown_key` (see E5) while
+  `scripts/verify-tag.sh` accepts it. Release run 35965234379 verified the
+  tag, built and rebuilt the assets on both architectures, and confirmed
+  the built version equals the tag, then failed on the next guard:
+  `nix eval --raw .#lib.versionInfo.isRelease` cannot print a boolean
+  ("cannot coerce a Boolean to a string"). That step only runs for tag
+  pushes, so the `workflow_dispatch` dry run had not exercised it.
+- A re-run cannot help: a workflow run uses the workflow file at the
+  tagged commit. Moving the tag is what the rules forbid, so v0.1.0 stays
+  a tag with no release and v0.1.1 carries the fix (`nix eval --json`),
+  together with a second correction found while reviewing the untested
+  publish path: `make_latest` is now sent on the publish call rather than
+  on the draft, since GitHub documents that drafts cannot be set as
+  latest. The SPDX predicate type the verifier expects
+  (`https://spdx.dev/Document/v2.3`) was confirmed against
+  `actions/attest`'s source (`https://spdx.dev/Document/v${spdxVersion}`).
