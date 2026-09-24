@@ -9,6 +9,8 @@ the flake, the binary and the release tag are all derived from it.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-24
+
 ### Fixed
 
 - The release workflow's release-state guard used `nix eval --raw` on a
@@ -29,5 +31,6 @@ the flake, the binary and the release tag are all derived from it.
 - `nix run .#verify`, a consumer-side verifier for checksums, attestations
   and reproducibility that needs no GitHub tooling.
 
-[Unreleased]: https://github.com/Quince-Pie/release-experiment/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Quince-Pie/release-experiment/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Quince-Pie/release-experiment/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Quince-Pie/release-experiment/releases/tag/v0.1.0
