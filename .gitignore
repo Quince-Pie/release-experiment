@@ -1,0 +1,9 @@
+# secrets
+.env
+
+# nix build outputs
+result
+result-*
+
+# direnv
+.direnv/
