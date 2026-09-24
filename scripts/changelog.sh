@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# changelog.sh - Keep a Changelog 1.1.0 helper for CHANGELOG.md.
+# changelog.sh - Keep a Changelog 2.0.0 helper for CHANGELOG.md.
 #
 #   changelog.sh lint                       validate structure, versions, order, links
 #   changelog.sh latest                     print the latest released version

@@ -1,70 +1,115 @@
 # 0005. Provenance and SBOM attestations, verifiable without GitHub tooling
 
 Status: accepted (2026-09-24). Evidence: [`docs/evidence.md`](../evidence.md) E4.
+Research: [`docs/research/r4-supplychain.md`](../research/r4-supplychain.md),
+[`docs/research/r3-gh-actions.md`](../research/r3-gh-actions.md).
 
 ## Requirement
 
-A consumer must be able to establish, from the published bytes alone plus
-public infrastructure, that an archive was produced by *this repository's
-release workflow* for *this tag*, and what it contains, without trusting
-the maintainer's machine or a CLI supplied by the platform.
+A consumer must be able to establish, from the published bytes plus public
+infrastructure, that an archive was produced by *this repository's release
+workflow* for *this tag*, and what it contains, without trusting the
+maintainer's machine or a command-line tool supplied by the platform.
 
 ## Options
 
 | Option | Decisive property | Outcome |
 | --- | --- | --- |
-| Detached signatures with a maintainer key (GPG/minisign/SSH) | Binds the assets to a person, not to the build; key distribution and rotation are manual; says nothing about how the bytes were produced | Rejected as the primary mechanism (the tag signature already binds the *source* to the maintainer) |
-| cosign keyless signing from the workflow (`cosign sign-blob`) | Same Sigstore identity as GitHub's attestations but stored only in Rekor; nothing ties the signature to a predicate; GitHub's discovery API does not index it | Not chosen; subsumed by attestations |
-| `actions/attest-build-provenance` + `actions/attest-sbom` | SLSA v1 provenance and an SBOM as in-toto statements, signed with the workflow's OIDC identity through Sigstore, stored by GitHub and discoverable by subject digest through the REST API; GitHub-owned actions | **Chosen** |
-| `slsa-github-generator` reusable workflows | Historically the way to reach SLSA Build L3 on GitHub; a separate project with its own release cadence and a large trusted surface | Not chosen for now; revisit if L3 is required (see below) |
+| Detached signatures with a maintainer key (GPG, minisign, SSH) | Binds assets to a person, not to the build; key distribution and rotation are manual; says nothing about how the bytes were produced. OpenSSF Scorecard still scores these (`*.asc`, `*.sig`, `*.minisig`, `*.sigstore`, `*.sigstore.json`, `*.intoto.jsonl`) | Not the primary mechanism; the tag signature already binds the *source* to the maintainer |
+| cosign keyless from the workflow (`cosign sign-blob`) | Same Sigstore identity as GitHub's attestations, but stored only in Rekor with no predicate and not indexed by GitHub's API | Subsumed by attestations |
+| `actions/attest-build-provenance` + `actions/attest` (SBOM) | SLSA v1 provenance and an SBOM as in-toto statements, signed with the workflow's OIDC identity through Sigstore, stored by GitHub and discoverable by subject digest; GitHub-owned actions | **Chosen**. `actions/attest-sbom` was also considered but it prints "has been deprecated, please use actions/attest instead" at run time, so the SBOM uses `actions/attest` directly |
+| `slsa-github-generator` reusable workflows | The historical route to SLSA Build L3 | Its README now says "This project is no longer actively maintained" and points to artifact attestations; `slsa-verifier` accepts GitHub attestation bundles only from two named builders |
 
 ## How verification works here
 
 1. `GET /repos/{owner}/{repo}/attestations/sha256:<digest>` lists the
-   attestations for an asset. In 2026 the API returns a `bundle_url`
-   whose payload is the Sigstore bundle compressed with raw snappy
-   (GitHub's own CLI decodes it the same way); `snzip -d -t raw` recovers
-   the JSON.
-2. `cosign verify-blob-attestation --bundle ... --certificate-oidc-issuer
+   attestations for an asset. Under the default API version the response
+   may still carry an inline `bundle`; under version 2026-03-10 it is
+   removed and only `bundle_url` remains. The URL serves the Sigstore
+   bundle (`application/vnd.dev.sigstore.bundle.v0.3+json`) compressed
+   with raw snappy (`Content-Type: application/x-snappy`); GitHub's own
+   CLI decodes it with `snappy.Decode`, and `snzip -d -t raw` is the
+   equivalent used by `scripts/verify-release.sh`, which handles both
+   shapes.
+2. `cosign verify-blob-attestation --bundle … --certificate-oidc-issuer
    https://token.actions.githubusercontent.com --certificate-identity
    https://github.com/<owner>/<repo>/.github/workflows/release.yml@refs/tags/vX.Y.Z
-   --type <predicate>` checks the Fulcio certificate chain, the Rekor
-   inclusion proof, the DSSE signature, that the blob's digest is among
-   the statement's subjects, and that the predicate type matches. The
-   identity is matched exactly, not by regexp: the workflow file *and* the
-   tag are part of it, so an attestation from another workflow, branch or
-   tag of the same repository does not verify.
-3. The same is done for the SBOM predicate (`https://spdx.dev/Document/v2.3`).
-4. Optionally, `nix build github:<owner>/<repo>/vX.Y.Z#release-assets`
+   --type <predicate>` checks the Fulcio chain against the Sigstore
+   public-good trust root, the Rekor inclusion proof, the DSSE signature,
+   that the blob's digest is among the statement's subjects, and that the
+   predicate type matches. The identity is matched exactly: the workflow
+   file *and* the tag are part of the Fulcio SAN
+   (`https://github.com/{job_workflow_ref}`), so an attestation from
+   another workflow, branch or tag of the same repository does not verify.
+   cosign 3 verifies the bundle format by default; `--new-bundle-format`
+   is gone from its reference pages.
+3. The same for the SBOM predicate (`https://spdx.dev/Document/v2.3`).
+4. Optionally `nix build github:<owner>/<repo>/vX.Y.Z#release-assets`
    reproduces the bytes.
 
-All of this is `scripts/verify-release.sh`; the release workflow runs it
-after publishing, on a fresh runner, so a release is only green once it
-has been verified the way a consumer would verify it.
+This is `scripts/verify-release.sh`; the release workflow runs it after
+publishing, on a fresh runner, so a release is only green once it has been
+verified the way a consumer would verify it. sigstore-python 4.x
+(`sigstore verify github`) and sigstore-go's example verifier are
+alternative verifiers documented by Sigstore.
+
+## SBOM format
+
+SPDX 2.3 JSON, generated by syft from the linux/amd64 binary (so the
+exact Go standard-library version is recorded, which vulnerability
+matching needs). SPDX 2.x is the ISO/IEC 5962 lineage and syft's default;
+SPDX 3.0.1 (2024-12) and CycloneDX 1.7 (2025-10, ECMA-424 2nd edition) are
+both accepted by `actions/attest` ("SPDX or CycloneDX JSON") and by syft,
+and either can replace it by changing one option in `scripts/sbom.sh`.
+One SBOM is attested to all six archives because they are built from the
+same module graph with the same toolchain; only the root package's name
+and digest would differ per target. CISA's 2026 minimum elements
+(2026-07-29) add fields such as tool name and generation context that
+syft's SPDX output carries.
 
 ## The release attestation
 
-Enabling immutable releases makes GitHub add a second attestation per
-asset (predicate `https://in-toto.io/attestation/release/v0.2`, subject =
-every asset, predicate = `purl`, `tag`, repository ids), signed by
-`https://dotcom.releases.github.com` with GitHub's own Fulcio and a
-timestamp authority instead of a transparency log. It proves that the
-asset set was fixed by GitHub at publication. GitHub publishes the trust
-root through a TUF repository (`https://tuf-repo.github.com`), but cosign
-3.1.3 cannot complete the timestamp verification against it, and the
-certificate carries no OIDC issuer for cosign to match. Verifying it today
-requires a sigstore-go based verifier (which is what `gh attestation
-verify` embeds). This repository treats it as a server-side guarantee on
+Immutable releases add a second, GitHub-initiated attestation per asset
+("creating an immutable release automatically generates a release
+attestation … containing the release tag, commit SHA, and release
+assets"). Observed on a live release: predicate type
+`https://in-toto.io/attestation/release/v0.2`, subjects = every asset,
+predicate = `purl`, `tag`, repository ids; signer SAN
+`https://dotcom.releases.github.com`, issued by GitHub's own Fulcio, no
+OIDC-issuer extension, no transparency-log entry, one RFC 3161 timestamp.
+GitHub's CLI verifies it with sigstore-go using
+`verify.WithSignedTimestamps(1)` and a SAN-only policy ("No issuer
+extension (match anything)"). GitHub publishes its trust root through a
+TUF repository (`https://tuf-repo.github.com`, target
+`trusted_root.json`), but cosign 3.1.3 cannot complete the timestamp
+verification against it and requires an issuer to match. This repository
+therefore treats the release attestation as a server-side guarantee on
 top of the ones it verifies itself; when a standalone verifier supports
 it, `scripts/verify-release.sh` gains one more predicate.
 
 ## SLSA level
 
-The provenance is generated by GitHub-hosted runners from a workflow in
-this repository with `id-token: write`; that is SLSA v1 Build L2 as
-documented by GitHub. L3 additionally requires the provenance to be
-generated by a build platform the project cannot influence from its own
-workflow, which GitHub implements through reusable workflows. The cost is
-a second repository to trust and a more indirect workflow; for a single
-project it was not judged worth it, and the decision is recorded so it can
-be revisited with the requirement stated.
+GitHub states that "artifact attestations by itself provides SLSA v1.0
+Build Level 2" and that reusable workflows "can provide isolation between
+the build process and the calling workflow, to meet SLSA v1.0 Build Level
+3". L3 would move the build definition into a reusable workflow whose
+identity becomes the builder; for a single project that adds a second
+repository to trust and a more indirect workflow, and it was not judged
+worth it. SLSA 1.2 (current) adds a Source track whose L2 requirement,
+that tags "MUST be configured to prevent them from being moved or
+deleted", is met by the tag ruleset and immutable releases.
+
+## Sources
+
+GitHub Docs: artifact attestations concept, using and verifying
+attestations offline, REST attestations, breaking changes for API version
+2026-03-10, immutable releases concept; `actions/attest`,
+`actions/attest-build-provenance`, `actions/attest-sbom` action.yml;
+cli/cli attestation client and release verify sources. Sigstore: cosign
+releases and `verify-blob-attestation` reference, protobuf-specs bundle
+media types, Fulcio OIDC and OID documentation, sigstore-python,
+sigstore-go. SLSA v1.2 build and source requirements;
+slsa-github-generator and slsa-verifier READMEs. in-toto attestation
+predicates. SPDX and CycloneDX release pages; syft formats; CISA 2026
+minimum elements; OpenSSF Scorecard checks. All accessed 2026-09-24; URLs
+in the research digests.

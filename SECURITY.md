@@ -1,4 +1,4 @@
-# Security
+| Nobody, including the maintainer, can swap assets or move the tag after publication | GitHub immutable releases (enabled for this repository) freeze the tag and the assets at publish time; the tag ruleset blocks tag updates and deletions | Release page shows the immutable badge; `GET /repos/…/immutable-releases` |# Security
 
 ## Reporting a vulnerability
 
@@ -59,6 +59,7 @@ and GPG keys → New SSH key → key type "Signing Key") so the web UI shows
 - Every dependency is locked: `flake.lock` (nixpkgs), the upstream Go
   toolchain tarball hash (`nix/go-toolchain.nix`), `go.mod`, action SHAs and
   the Nix installer hash. Updates
-  arrive as pull requests (Dependabot, `flake-update.yml`).
+  arrive as Dependabot pull requests (actions, Go module and Nix flake
+  inputs).
 - `zizmor` (pedantic), `actionlint`, `shellcheck`, `govulncheck`, CodeQL
   (Go and Actions) and OpenSSF Scorecard run in CI.

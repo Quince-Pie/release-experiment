@@ -64,8 +64,11 @@ inferred from documentation alone.
   outside build differed from byte 209 onward because `go build` embeds
   `vcs.revision`/`vcs.time`/`vcs.modified` when a `.git` directory is
   present and the Nix source has none.
-- Cross-architecture identity is re-checked by CI on every push and
-  gates every release (`.github/workflows/release.yml`, job `publish`).
+- CI run 35963718077 (commit 01bce67): `nix flake check` on both runners,
+  `--rebuild` on both, and the `Cross-architecture reproducibility` job
+  found the two builders' `SHA256SUMS` identical. This identity is
+  re-checked on every push and gates every release
+  (`.github/workflows/release.yml`, job `publish`).
 
 ## E4. GitHub artifact attestations can be verified without `gh`
 

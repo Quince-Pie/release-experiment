@@ -15,7 +15,8 @@ nix build .#release-assets && ls result/   # the exact archives a release would 
 
 - Every pull request that changes behaviour adds a line under
   `## [Unreleased]` in `CHANGELOG.md`, in one of the Keep a Changelog
-  categories (Added, Changed, Deprecated, Removed, Fixed, Security). Label a
+  categories (Added, Changed, Deprecated, Removed, Fixed, Security); start
+  an entry with **Breaking:** when it breaks users. Label a
   pull request `skip-changelog` when there is genuinely nothing to tell users
   (CI-only changes, dependency locks).
 - Commit messages: imperative subject ≤ 72 characters naming the concrete
