@@ -52,10 +52,24 @@ for id in $(jq -r --arg t "$tag" '.[] | select(.tag_name == $t and .draft == tru
   gh_api DELETE "/repos/$GITHUB_REPOSITORY/releases/$id" >/dev/null
 done
 
+# Mark as "latest" only if this version orders above every published
+# non-pre-release version. GitHub documents three different rules for the
+# automatic choice (semantic version in the UI docs, created_at in the REST
+# docs, date-then-version for make_latest=legacy), so decide explicitly.
+make_latest=false
+if [ "$prerelease" = false ]; then
+  make_latest=true
+  while read -r other; do
+    [ -n "$other" ] || continue
+    if relver check "$other" >/dev/null 2>&1 && [ "$(relver compare "$version" "$other")" != "1" ]; then
+      make_latest=false
+    fi
+  done < <(jq -r '.[] | select(.draft == false and .prerelease == false) | .tag_name | ltrimstr("v")' <<<"$existing")
+fi
+
 # 1. draft
-payload="$(jq -n --arg tag "$tag" --arg name "$tag" --arg body "$notes" --argjson pre "$prerelease" \
-  '{tag_name:$tag, name:$name, body:$body, draft:true, prerelease:$pre,
-    make_latest: (if $pre then "false" else "true" end)}')"
+payload="$(jq -n --arg tag "$tag" --arg name "$tag" --arg body "$notes" --argjson pre "$prerelease" --arg latest "$make_latest" \
+  '{tag_name:$tag, name:$name, body:$body, draft:true, prerelease:$pre, make_latest:$latest}')"
 release="$(gh_api POST "/repos/$GITHUB_REPOSITORY/releases" -d "$payload")"
 id="$(jq -r .id <<<"$release")"
 upload_url="$(jq -r '.upload_url | sub("\\{\\?name,label\\}$"; "")' <<<"$release")"
