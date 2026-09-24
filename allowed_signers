@@ -1,0 +1,5 @@
+# OpenSSH allowed-signers file (ssh-keygen -Y, "git" namespace).
+# Only tags signed by a key listed here are accepted as releases; see
+# scripts/verify-tag.sh and SECURITY.md. Add one line per release manager:
+#   <principal> namespaces="git" <key-type> <base64-key> [comment]
+pie@quince.org namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK0ff9n836vVCsW39iz9mKxrzga+vme50EwOirBTkOpi QuincePie
