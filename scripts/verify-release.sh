@@ -12,7 +12,7 @@
 #   4. with --rebuild: rebuild the assets from the tag with Nix and require an
 #      identical SHA256SUMS, i.e. an independent reproduction of the release.
 #
-# Needs curl, jq, sha256sum, cosign (and nix for --rebuild). No gh CLI.
+# Needs curl, jq, sha256sum, snzip, cosign (and nix for --rebuild). No gh CLI.
 # GITHUB_TOKEN/GH_TOKEN are optional and only raise the API rate limit.
 set -euo pipefail
 
@@ -83,8 +83,28 @@ done
 (cd "$dir" && sha256sum --check --strict SHA256SUMS)
 
 # 3. attestations
+# The API returns each bundle either inline or, since 2026, as a bundle_url
+# pointing at raw-snappy-compressed JSON (GitHub's own CLI decodes it with
+# snappy.Decode); `snzip -d -t raw` is the equivalent here.
+fetch_bundle() { # ATTESTATIONS_JSON INDEX OUT
+  local json="$1" i="$2" out="$3" url
+  if [ "$(jq -r ".attestations[$i].bundle // empty | type" "$json")" = "object" ]; then
+    jq ".attestations[$i].bundle" "$json" >"$out"
+    return
+  fi
+  url="$(jq -r ".attestations[$i].bundle_url // empty" "$json")"
+  [ -n "$url" ] || die "attestation $i has neither bundle nor bundle_url"
+  curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors -o "$out.sn" "$url" || die "cannot download bundle $url"
+  snzip -d -t raw <"$out.sn" >"$out" || die "cannot decompress bundle (raw snappy expected)"
+  rm -f "$out.sn"
+}
+
+predicate_type() { # BUNDLE
+  jq -r '.dsseEnvelope.payload' "$1" | base64 -d | jq -r '.predicateType'
+}
+
 verify_attestation() { # NAME DIGEST PREDICATE_TYPE LABEL
-  local name="$1" digest="$2" ptype="$3" label="$4" json bundles i n found=0
+  local name="$1" digest="$2" ptype="$3" label="$4" json bundle i n found=0
   json="$dir/$name.attestations.json"
   curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors "${auth[@]}" \
     -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -93,13 +113,11 @@ verify_attestation() { # NAME DIGEST PREDICATE_TYPE LABEL
   n="$(jq '.attestations | length' "$json")"
   [ "$n" -gt 0 ] || die "$name: no attestations recorded for sha256:$digest"
   for ((i = 0; i < n; i++)); do
-    if [ "$(jq -r ".attestations[$i].bundle.dsseEnvelope.payload" "$json" | base64 -d | jq -r .predicateType)" != "$ptype" ]; then
-      continue
-    fi
-    bundles="$dir/$name.$label.sigstore.json"
-    jq ".attestations[$i].bundle" "$json" >"$bundles"
+    bundle="$dir/$name.$i.sigstore.json"
+    [ -f "$bundle" ] || fetch_bundle "$json" "$i" "$bundle"
+    [ "$(predicate_type "$bundle")" = "$ptype" ] || continue
     cosign verify-blob-attestation \
-      --bundle "$bundles" \
+      --bundle "$bundle" \
       --certificate-oidc-issuer "$issuer" \
       --certificate-identity "$identity" \
       --type "$ptype" \

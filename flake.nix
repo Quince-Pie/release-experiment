@@ -60,34 +60,22 @@
       packagesFor =
         pkgs:
         let
+          goToolchain = pkgs.callPackage ./nix/go-toolchain.nix { };
+
           relver = pkgs.callPackage ./nix/package.nix {
+            inherit goToolchain;
             src = goSrc;
             inherit (versionInfo) version commit date;
           };
 
-          # Go cross-compiles without a C toolchain when CGO is off, so a
-          # cross build is the native derivation with GOOS/GOARCH overridden
-          # (buildGoModule pins env.GOOS/GOARCH from its Go package, hence
-          # overrideAttrs rather than an argument). Tests cannot run for a
-          # foreign target; they run in the native package.
+          # Same recipe with a foreign GOOS/GOARCH; tests run in the native package.
           crossBinary =
             { goos, goarch }:
-            relver.overrideAttrs (old: {
-              pname = "relver-${goos}-${goarch}";
-              env = old.env // {
-                GOOS = goos;
-                GOARCH = goarch;
-              };
-              doCheck = false;
-              doInstallCheck = false;
-              # `go install` places foreign-target binaries in bin/GOOS_GOARCH/.
-              postInstall = ''
-                if [ -d "$out/bin/${goos}_${goarch}" ]; then
-                  mv "$out/bin/${goos}_${goarch}"/* "$out/bin/"
-                  rmdir "$out/bin/${goos}_${goarch}"
-                fi
-              '';
-            });
+            pkgs.callPackage ./nix/package.nix {
+              inherit goToolchain goos goarch;
+              src = goSrc;
+              inherit (versionInfo) version commit date;
+            };
 
           crossPackages = lib.listToAttrs (
             map (t: {
@@ -104,16 +92,19 @@
           };
         in
         {
-          inherit relver release-assets;
+          inherit relver release-assets goToolchain;
           default = relver;
         }
         // crossPackages;
 
       formatterFor =
         pkgs:
+        let
+          goToolchain = pkgs.callPackage ./nix/go-toolchain.nix { };
+        in
         pkgs.nixfmt-tree.override {
           runtimeInputs = [
-            pkgs.go
+            goToolchain
             pkgs.shfmt
           ];
           settings = {
@@ -166,7 +157,7 @@
           go-lint =
             pkgs.runCommand "go-lint"
               {
-                nativeBuildInputs = [ pkgs.go ];
+                nativeBuildInputs = [ p.goToolchain ];
               }
               ''
                 export HOME="$TMPDIR" GOCACHE="$TMPDIR/gocache" GOFLAGS=-mod=mod GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local
@@ -301,7 +292,7 @@
           vulncheck = pkgs.writeShellApplication {
             name = "vulncheck";
             runtimeInputs = [
-              pkgs.go
+              p.goToolchain
               pkgs.govulncheck
             ];
             text = ''
@@ -319,7 +310,7 @@
           release = mkApp "release" ./scripts/release.sh [ ];
           changelog = mkApp "changelog" ./scripts/changelog.sh [ ];
           verify-tag = mkApp "verify-tag" ./scripts/verify-tag.sh [ ];
-          verify = mkApp "verify-release" ./scripts/verify-release.sh [ ];
+          verify = mkApp "verify-release" ./scripts/verify-release.sh [ pkgs.snzip ];
           github-release = mkApp "github-release" ./scripts/github-release.sh [ ];
           sbom = mkApp "sbom" ./scripts/sbom.sh [ pkgs.syft ];
           audit-workflows = {
