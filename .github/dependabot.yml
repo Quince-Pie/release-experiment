@@ -1,0 +1,16 @@
+# Keeps the SHA-pinned actions and the Go module current. Dependabot rewrites
+# both the pinned commit and the trailing "# vX.Y.Z" comment. Nix inputs are
+# updated by .github/workflows/flake-update.yml instead.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly

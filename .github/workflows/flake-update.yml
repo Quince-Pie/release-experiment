@@ -1,0 +1,82 @@
+# Weekly update of flake.lock through a pull request. The commit is created
+# with the GraphQL API so GitHub signs it (satisfying the signed-commit
+# rule), and CI is dispatched explicitly because pushes made with
+# GITHUB_TOKEN never trigger workflows on their own.
+name: Update flake inputs
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: flake-update
+  cancel-in-progress: false
+
+env:
+  NIX_CONFIG: "access-tokens = github.com=${{ github.token }}"
+
+jobs:
+  update:
+    name: nix flake update
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the branch and the commit (GraphQL, GitHub-signed)
+      pull-requests: write # open the pull request and label it
+      actions: write # dispatch the CI workflow on the update branch
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix (pinned, first-party)
+        run: scripts/install-nix.sh
+      - name: Update flake.lock
+        id: update
+        run: |
+          before="$(nix flake metadata --json | jq -r '.locks.nodes.nixpkgs.locked.rev')"
+          nix flake update
+          after="$(nix flake metadata --json | jq -r '.locks.nodes.nixpkgs.locked.rev')"
+          if git diff --quiet -- flake.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "flake.lock is current"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "nixpkgs: $before -> $after"
+            {
+              echo "nixpkgs: \`${before:0:12}\` → \`${after:0:12}\`"
+              echo
+              echo '```diff'
+              git diff --no-color -- flake.lock
+              echo '```'
+            } > "$RUNNER_TEMP/body.md"
+          fi
+      - name: Check with the updated inputs
+        if: steps.update.outputs.changed == 'true'
+        run: nix flake check --print-build-logs
+      - name: Commit, open pull request, dispatch CI
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          branch="flake-update/$(date -u +%Y-%m-%d)"
+          scripts/github-commit.sh "$branch" "Update flake inputs" flake.lock
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          hdr=(-H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          number="$(curl -sS --fail-with-body "${hdr[@]}" "$api/pulls?head=${GITHUB_REPOSITORY%%/*}:$branch&state=open" | jq -r '.[0].number // empty')"
+          if [ -z "$number" ]; then
+            number="$(curl -sS --fail-with-body -X POST "${hdr[@]}" "$api/pulls" \
+              -d "$(jq -n --arg h "$branch" --arg body "$(cat "$RUNNER_TEMP/body.md")" \
+                '{title:"Update flake inputs", head:$h, base:"main", body:$body}')" | jq -r .number)"
+            curl -sS --fail-with-body -X POST "${hdr[@]}" "$api/issues/$number/labels" -d '{"labels":["skip-changelog","dependencies"]}' >/dev/null
+            echo "opened pull request #$number"
+          else
+            echo "pull request #$number already open"
+          fi
+          curl -sS --fail-with-body -X POST "${hdr[@]}" "$api/actions/workflows/ci.yml/dispatches" \
+            -d "$(jq -n --arg ref "$branch" '{ref:$ref}')"
+          echo "dispatched CI on $branch"

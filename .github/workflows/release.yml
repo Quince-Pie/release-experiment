@@ -1,0 +1,167 @@
+# Release pipeline. The only trigger that publishes is a pushed tag vX.Y.Z,
+# which must be an annotated tag signed by a key in allowed_signers and must
+# match CHANGELOG.md (scripts/verify-tag.sh). Assets are built by two
+# independent builders (x86_64 and arm64) whose outputs must be identical,
+# each also rebuilt in place for determinism; provenance and SBOM
+# attestations are generated with GitHub's Sigstore integration; the release
+# is created as a draft, fully populated, then published (immutable); and a
+# separate job verifies the published release exactly as a consumer would,
+# including rebuilding it from the tag. workflow_dispatch runs the build and
+# reproducibility stages only, as a dry run.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NIX_CONFIG: "access-tokens = github.com=${{ github.token }}"
+
+jobs:
+  build:
+    name: Verify tag and build
+    strategy:
+      fail-fast: true
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Checkout with full history and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the release tag
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/verify-tag.sh "$TAG" origin/main
+      - name: Install Nix (pinned, first-party)
+        run: scripts/install-nix.sh
+      - name: Check
+        run: nix flake check --print-build-logs
+      - name: Build release assets
+        run: nix build .#release-assets --print-build-logs --out-link assets
+      - name: Rebuild and require identical output
+        run: nix build .#release-assets --rebuild
+      - name: Require the built version to equal the tag
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          built="$(nix eval --raw .#lib.versionInfo.version)"
+          [ "v$built" = "$TAG" ] || { echo "::error::built version $built != tag $TAG"; exit 1; }
+          [ "$(nix eval --raw .#lib.versionInfo.isRelease)" = "true" ] || { echo "::error::checkout is not a release state"; exit 1; }
+          ls -l assets/
+      - name: Upload assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: assets-${{ matrix.runner }}
+          path: assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attest and publish
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the release and upload its assets
+      id-token: write # Sigstore keyless signing of the attestations
+      attestations: write # store the attestations with the repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix (pinned, first-party)
+        run: scripts/install-nix.sh
+      - name: Download assets from both builders
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: assets-*
+      - name: Require identical assets from the x86_64 and arm64 builders
+        run: |
+          diff assets-ubuntu-24.04/SHA256SUMS assets-ubuntu-24.04-arm/SHA256SUMS
+          (cd assets-ubuntu-24.04-arm && sha256sum --check --strict SHA256SUMS)
+          mv assets-ubuntu-24.04 assets
+          (cd assets && sha256sum --check --strict SHA256SUMS)
+      - name: Generate SBOM
+        env:
+          TAG: ${{ github.ref_name }}
+        run: nix run .#sbom -- assets "assets/relver_${TAG#v}_sbom.spdx.json"
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: assets/SHA256SUMS
+      - name: Attest SBOM
+        id: sbom
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-checksums: assets/SHA256SUMS
+          sbom-path: assets/relver_${{ github.ref_name }}_sbom.spdx.json
+      - name: Add attestation bundles to the assets
+        env:
+          TAG: ${{ github.ref_name }}
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          cp "$PROVENANCE_BUNDLE" "assets/relver_${TAG#v}_provenance.sigstore.json"
+          cp "$SBOM_BUNDLE" "assets/relver_${TAG#v}_sbom.sigstore.json"
+          ls -l assets/
+      - name: Create draft release, upload assets, publish
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: nix run .#github-release -- "$TAG" assets
+      - name: Summary
+        env:
+          URL: ${{ steps.release.outputs.html_url }}
+          PROVENANCE_URL: ${{ steps.provenance.outputs.attestation-url }}
+          SBOM_URL: ${{ steps.sbom.outputs.attestation-url }}
+        run: |
+          {
+            echo "## Release published"
+            echo "- Release: $URL"
+            echo "- Provenance attestation: $PROVENANCE_URL"
+            echo "- SBOM attestation: $SBOM_URL"
+            echo '```'
+            cat assets/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Verify as a consumer
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix (pinned, first-party)
+        run: scripts/install-nix.sh
+      - name: Download, check, verify attestations, rebuild from the tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: nix run .#verify -- --repo "$GITHUB_REPOSITORY" --rebuild "$TAG"
