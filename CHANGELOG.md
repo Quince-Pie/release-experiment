@@ -9,6 +9,8 @@ the flake, the binary and the release tag are all derived from it.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-24
+
 ### Added
 
 - `relver`, a Semantic Versioning 2.0.0 tool (`check`, `compare`, `sort`,
@@ -19,4 +21,5 @@ the flake, the binary and the release tag are all derived from it.
 - `nix run .#verify`, a consumer-side verifier for checksums, attestations
   and reproducibility that needs no GitHub tooling.
 
-[Unreleased]: https://github.com/Quince-Pie/release-experiment/commits/main
+[Unreleased]: https://github.com/Quince-Pie/release-experiment/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Quince-Pie/release-experiment/releases/tag/v0.1.0
