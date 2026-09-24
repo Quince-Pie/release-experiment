@@ -38,7 +38,10 @@ repo_url() {
   local url
   url="$(git remote get-url origin 2>/dev/null || true)"
   case "$url" in
-    git@*:*) url="https://${url#git@}" && url="${url/:/\/}" ;;
+    git@*:*)
+      url="${url#git@}"
+      url="https://${url/:/\/}"
+      ;;
     ssh://git@*) url="https://${url#ssh://git@}" ;;
   esac
   url="${url%.git}"
@@ -119,7 +122,7 @@ cmd_lint() {
         ;;
       '['*']: '*)
         refs["${line%%]*}"]=1
-        refs["${line%%]*}"]=1
+        [[ ${line#*]: } =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?/ ]] || err "malformed link reference URL in '$line'"
         ;;
     esac
     # A "### Type" heading directly followed by another heading is an empty subsection.
