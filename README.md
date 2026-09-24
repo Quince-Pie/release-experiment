@@ -28,8 +28,8 @@ itself uses to validate versions.
 ## Verify a release
 
 ```sh
-nix run github:Quince-Pie/release-experiment#verify -- 0.1.0             # checksums + attestations
-nix run github:Quince-Pie/release-experiment#verify -- --rebuild 0.1.0   # ... and an independent rebuild
+nix run github:Quince-Pie/release-experiment#verify -- 0.1.1             # checksums + attestations
+nix run github:Quince-Pie/release-experiment#verify -- --rebuild 0.1.1   # ... and an independent rebuild
 ```
 
 Without Nix: download `SHA256SUMS` and the archive, run `sha256sum --check`,
@@ -40,8 +40,8 @@ decompress the `bundle_url` payload (`snzip -d -t raw`) and run
 ```sh
 cosign verify-blob-attestation --bundle bundle.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity https://github.com/Quince-Pie/release-experiment/.github/workflows/release.yml@refs/tags/v0.1.0 \
-  --type https://slsa.dev/provenance/v1 relver_0.1.0_linux_amd64.tar.gz
+  --certificate-identity https://github.com/Quince-Pie/release-experiment/.github/workflows/release.yml@refs/tags/v0.1.1 \
+  --type https://slsa.dev/provenance/v1 relver_0.1.1_linux_amd64.tar.gz
 ```
 
 [`scripts/verify-release.sh`](scripts/verify-release.sh) is exactly that,

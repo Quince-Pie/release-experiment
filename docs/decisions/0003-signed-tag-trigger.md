@@ -53,6 +53,9 @@ Why this wins on the objectives:
 - If the workflow fails after the tag is pushed, the tag stays. A version
   names a source snapshot; if that snapshot does not build, the next
   version fixes it. Moving tags is exactly the practice the rules forbid.
+  This happened on the first attempt: v0.1.0 exists as a tag with no
+  release because of a bug in the workflow at that commit, and v0.1.1 is
+  the first published version (evidence E8, E9).
   `nix flake check` runs locally in `prepare` (through the pull request's
   CI) before a tag is ever created, so this is rare.
 - Pre-releases are ordinary tags (`v1.0.0-rc.1`); the release is marked

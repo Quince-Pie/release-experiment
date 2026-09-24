@@ -173,3 +173,33 @@ Confirmed by making the calls (all returned 2xx and read back):
   latest. The SPDX predicate type the verifier expects
   (`https://spdx.dev/Document/v2.3`) was confirmed against
   `actions/attest`'s source (`https://spdx.dev/Document/v${spdxVersion}`).
+
+## E9. v0.1.1: the first published release, verified three ways
+
+- Flow as documented: `nix run .#release -- prepare 0.1.1` opened pull
+  request #2; nine checks passed (the five required ones plus CodeQL for
+  Go and Actions and the changelog rule); the squash merge produced a
+  GitHub-verified commit; `nix run .#release -- tag 0.1.1` created the
+  SSH-signed annotated tag, verified it locally and pushed it.
+- Release run 35965737315: `Verify tag and build` 1.5 min (x86_64) and
+  1.1 min (arm64) in parallel, `Attest and publish` 0.9 min, `Verify as
+  a consumer` 1.4 min; about five minutes end to end.
+- Published release: `immutable: true`; ten assets (six archives,
+  `SHA256SUMS`, the SPDX SBOM, the provenance and SBOM Sigstore
+  bundles), each with a server-computed `sha256` digest that
+  `scripts/github-release.sh` compared against the local file at upload;
+  `GET /releases/latest` returns v0.1.1.
+- Attestations per archive, read back through the API: a provenance
+  statement (`https://slsa.dev/provenance/v1`) and an SBOM statement
+  (`https://spdx.dev/Document/v2.3`), both with certificate SAN
+  `https://github.com/Quince-Pie/release-experiment/.github/workflows/release.yml@refs/tags/v0.1.1`,
+  plus GitHub's release attestation
+  (`https://in-toto.io/attestation/release/v0.2`, SAN
+  `https://dotcom.releases.github.com`, initiator `github`).
+- Independent consumer verification from a third machine, using the
+  flake from GitHub at the tag rather than a local checkout
+  (`nix run github:Quince-Pie/release-experiment/v0.1.1#verify -- --rebuild 0.1.1`):
+  `SHA256SUMS` matches, all twelve cosign verifications pass, and the
+  rebuild from the tag reproduces `SHA256SUMS` bit-for-bit. Together with
+  the two CI builders that is three independent reproductions of the
+  published bytes on two CPU architectures.
