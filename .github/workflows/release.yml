@@ -99,9 +99,13 @@ jobs:
           mv assets-ubuntu-24.04 assets
           (cd assets && sha256sum --check --strict SHA256SUMS)
       - name: Generate SBOM
+        id: sbom-file
         env:
           TAG: ${{ github.ref_name }}
-        run: nix run .#sbom -- assets "assets/relver_${TAG#v}_sbom.spdx.json"
+        run: |
+          path="assets/relver_${TAG#v}_sbom.spdx.json"
+          nix run .#sbom -- assets "$path"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
       - name: Attest build provenance
         id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -112,7 +116,7 @@ jobs:
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-checksums: assets/SHA256SUMS
-          sbom-path: assets/relver_${{ github.ref_name }}_sbom.spdx.json
+          sbom-path: ${{ steps.sbom-file.outputs.path }}
       - name: Add attestation bundles to the assets
         env:
           TAG: ${{ github.ref_name }}
