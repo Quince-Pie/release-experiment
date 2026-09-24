@@ -229,7 +229,7 @@
               }
               ''
                 cd ${self}
-                actionlint -color .github/workflows/*.yml
+                actionlint -color -config-file .github/actionlint.yaml .github/workflows/*.yml
                 zizmor --offline --persona pedantic --min-severity low .github/workflows
                 touch "$out"
               '';

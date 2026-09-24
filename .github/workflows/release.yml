@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
@@ -75,7 +75,7 @@ jobs:
     name: Attest and publish
     needs: build
     if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: write # create the release and upload its assets
@@ -94,9 +94,9 @@ jobs:
           pattern: assets-*
       - name: Require identical assets from the x86_64 and arm64 builders
         run: |
-          diff assets-ubuntu-24.04/SHA256SUMS assets-ubuntu-24.04-arm/SHA256SUMS
-          (cd assets-ubuntu-24.04-arm && sha256sum --check --strict SHA256SUMS)
-          mv assets-ubuntu-24.04 assets
+          diff assets-ubuntu-26.04/SHA256SUMS assets-ubuntu-26.04-arm/SHA256SUMS
+          (cd assets-ubuntu-26.04-arm && sha256sum --check --strict SHA256SUMS)
+          mv assets-ubuntu-26.04 assets
           (cd assets && sha256sum --check --strict SHA256SUMS)
       - name: Generate SBOM
         id: sbom-file
@@ -113,7 +113,7 @@ jobs:
           subject-checksums: assets/SHA256SUMS
       - name: Attest SBOM
         id: sbom
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: assets/SHA256SUMS
           sbom-path: ${{ steps.sbom-file.outputs.path }}
@@ -152,7 +152,7 @@ jobs:
   verify:
     name: Verify as a consumer
     needs: publish
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read # checkout

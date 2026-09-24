@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
@@ -55,7 +55,7 @@ jobs:
   reproducible:
     name: Cross-architecture reproducibility
     needs: check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions: {}
     steps:
@@ -65,14 +65,14 @@ jobs:
           pattern: assets-*
       - name: Compare
         run: |
-          diff assets-ubuntu-24.04/SHA256SUMS assets-ubuntu-24.04-arm/SHA256SUMS
+          diff assets-ubuntu-26.04/SHA256SUMS assets-ubuntu-26.04-arm/SHA256SUMS
           echo "x86_64 and arm64 builders produced identical release assets:"
-          cat assets-ubuntu-24.04/SHA256SUMS
+          cat assets-ubuntu-26.04/SHA256SUMS
 
   changelog:
     name: Changelog entry
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read # checkout
@@ -100,7 +100,7 @@ jobs:
 
   vulncheck:
     name: govulncheck
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read # checkout
@@ -116,7 +116,7 @@ jobs:
 
   audit-workflows:
     name: zizmor (online audits)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read # checkout
