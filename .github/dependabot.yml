@@ -1,12 +1,17 @@
-# Keeps the SHA-pinned actions and the Go module current. Dependabot rewrites
-# both the pinned commit and the trailing "# vX.Y.Z" comment. Nix inputs are
-# updated by .github/workflows/flake-update.yml instead.
+# Keeps every pinned dependency current through pull requests that CI gates:
+# the SHA-pinned actions (Dependabot rewrites the commit and the trailing
+# "# vX.Y.Z" comment), the Go module, and the flake.lock inputs (the nix
+# ecosystem has been supported since 2026-04-07). The Go toolchain and the
+# Nix installer are pinned by hash in nix/go-toolchain.nix and
+# scripts/install-nix.sh and are bumped by hand.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       actions:
         patterns: ["*"]
@@ -14,3 +19,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: nix
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
