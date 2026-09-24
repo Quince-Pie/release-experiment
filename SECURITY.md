@@ -56,8 +56,9 @@ and GPG keys → New SSH key → key type "Signing Key") so the web UI shows
   permission is read-only; write scopes are granted per job and commented.
 - Nix is installed by `scripts/install-nix.sh` from `releases.nixos.org`
   with a pinned version and SHA-256, not by a third-party action.
-- Every dependency is locked: `flake.lock` (nixpkgs, and through it the Go
-  toolchain), `go.mod`, action SHAs and the Nix installer hash. Updates
+- Every dependency is locked: `flake.lock` (nixpkgs), the upstream Go
+  toolchain tarball hash (`nix/go-toolchain.nix`), `go.mod`, action SHAs and
+  the Nix installer hash. Updates
   arrive as pull requests (Dependabot, `flake-update.yml`).
 - `zizmor` (pedantic), `actionlint`, `shellcheck`, `govulncheck`, CodeQL
   (Go and Actions) and OpenSSF Scorecard run in CI.
